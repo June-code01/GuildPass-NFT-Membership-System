@@ -111,7 +111,7 @@
 (map-set access-levels { level: u5 } 
   { level-name: "diamond", tournament-access: true, server-access: true, loot-bonus: u50, voting-power: u8 })
 
-  (define-public (create-guild
+(define-public (create-guild
   (guild-name (string-ascii 50))
   (max-members uint)
   (guild-type (string-ascii 30))
