@@ -238,3 +238,64 @@
         (merge guild-info { current-members: (- (get current-members guild-info) u1) }))
       
       (ok true))))
+
+(define-public (create-tournament
+  (tournament-name (string-ascii 50))
+  (guild-id uint)
+  (entry-fee uint)
+  (max-participants uint)
+  (start-date uint)
+  (end-date uint)
+  (min-access-level uint))
+  (let 
+    ((tournament-id (var-get next-tournament-id))
+     (guild-info (unwrap! (map-get? gaming-guilds { guild-id: guild-id }) err-guild-not-found)))
+    (begin
+      (asserts! (is-eq tx-sender (get guild-leader guild-info)) err-not-guild-leader)
+      (asserts! (> max-participants u0) err-invalid-parameters)
+      (asserts! (> end-date start-date) err-invalid-parameters)
+      (asserts! (<= min-access-level u5) err-invalid-parameters)
+      
+      (map-set tournaments { tournament-id: tournament-id }
+        {
+          tournament-name: tournament-name,
+          guild-id: guild-id,
+          entry-fee: entry-fee,
+          prize-pool: u0,
+          max-participants: max-participants,
+          current-participants: u0,
+          start-date: start-date,
+          end-date: end-date,
+          min-access-level: min-access-level,
+          is-active: true
+        })
+      
+      (var-set next-tournament-id (+ tournament-id u1))
+      (ok tournament-id))))
+
+(define-public (join-tournament (tournament-id uint))
+  (let 
+    ((tournament-info (unwrap! (map-get? tournaments { tournament-id: tournament-id }) err-tournament-not-found))
+     (member-info (unwrap! (map-get? member-access { member: tx-sender, guild-id: (get guild-id tournament-info) }) err-not-member))
+     (pass-info (unwrap! (map-get? guild-passes { pass-id: (get pass-id member-info) }) err-not-member))
+     (current-time (unwrap-panic (get-stacks-block-info? time (- stacks-block-height u1)))))
+    (begin
+      (asserts! (get is-active tournament-info) err-access-denied)
+      (asserts! (< (get current-participants tournament-info) (get max-participants tournament-info)) err-tournament-full)
+      (asserts! (>= (get access-level pass-info) (get min-access-level tournament-info)) err-access-denied)
+      (asserts! (< current-time (get start-date tournament-info)) err-access-denied)
+      
+      (if (> (get entry-fee tournament-info) u0)
+        (try! (stx-transfer? (get entry-fee tournament-info) tx-sender (as-contract tx-sender)))
+        true)
+      
+      (map-set tournament-participants { tournament-id: tournament-id, participant: tx-sender }
+        { joined-date: current-time, entry-paid: true })
+      
+      (map-set tournaments { tournament-id: tournament-id }
+        (merge tournament-info { 
+          current-participants: (+ (get current-participants tournament-info) u1),
+          prize-pool: (+ (get prize-pool tournament-info) (get entry-fee tournament-info))
+        }))
+      
+      (ok true))))
