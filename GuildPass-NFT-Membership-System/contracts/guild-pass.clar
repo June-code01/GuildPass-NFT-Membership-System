@@ -299,3 +299,66 @@
         }))
       
       (ok true))))
+
+(define-public (verify-guild-access (member principal) (guild-id uint) (required-access-level uint))
+  (let 
+    ((member-info (unwrap! (map-get? member-access { member: member, guild-id: guild-id }) err-not-member))
+     (pass-info (unwrap! (map-get? guild-passes { pass-id: (get pass-id member-info) }) err-not-member)))
+    (begin
+      (asserts! (get access-granted member-info) err-access-denied)
+      (asserts! (get is-active pass-info) err-access-denied)
+      (asserts! (>= (get access-level pass-info) required-access-level) err-access-denied)
+      (ok true))))
+
+(define-public (deactivate-pass (pass-id uint))
+  (let ((pass-info (unwrap! (map-get? guild-passes { pass-id: pass-id }) err-not-member)))
+    (begin
+      (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+      (map-set guild-passes { pass-id: pass-id }
+        (merge pass-info { is-active: false }))
+      (ok true))))
+
+(define-public (set-platform-fee-rate (new-rate uint))
+  (begin
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+    (asserts! (<= new-rate u25) err-invalid-parameters) ;; Max 25% fee
+    (var-set platform-fee-rate new-rate)
+    (ok true)))
+
+;; Read-only functions
+(define-read-only (get-guild-pass-info (pass-id uint))
+  (map-get? guild-passes { pass-id: pass-id }))
+
+(define-read-only (get-guild-info (guild-id uint))
+  (map-get? gaming-guilds { guild-id: guild-id }))
+
+(define-read-only (get-member-access (member principal) (guild-id uint))
+  (map-get? member-access { member: member, guild-id: guild-id }))
+
+(define-read-only (get-access-level-info (level uint))
+  (map-get? access-levels { level: level }))
+
+(define-read-only (get-pass-owner (pass-id uint))
+  (nft-get-owner? guild-pass pass-id))
+
+(define-read-only (get-tournament-info (tournament-id uint))
+  (map-get? tournaments { tournament-id: tournament-id }))
+
+(define-read-only (is-tournament-participant (tournament-id uint) (participant principal))
+  (map-get? tournament-participants { tournament-id: tournament-id, participant: participant }))
+
+(define-read-only (get-guild-member-count (guild-id uint))
+  (match (map-get? gaming-guilds { guild-id: guild-id })
+    guild-info (ok (get current-members guild-info))
+    err-guild-not-found))
+
+(define-read-only (get-member-experience (pass-id uint))
+  (match (map-get? guild-passes { pass-id: pass-id })
+    pass-info (ok (get experience-points pass-info))
+    err-not-member))
+
+(define-read-only (get-platform-fee-rate)
+  (var-get platform-fee-rate))
+
+(define-read-only (get-guild-treasury)
+  (var-get guild-treasury))
