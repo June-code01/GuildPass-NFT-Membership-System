@@ -110,3 +110,46 @@
   { level-name: "platinum", tournament-access: true, server-access: true, loot-bonus: u30, voting-power: u5 })
 (map-set access-levels { level: u5 } 
   { level-name: "diamond", tournament-access: true, server-access: true, loot-bonus: u50, voting-power: u8 })
+
+  (define-public (create-guild
+  (guild-name (string-ascii 50))
+  (max-members uint)
+  (guild-type (string-ascii 30))
+  (entry-requirements (string-ascii 100)))
+  (let 
+    ((guild-id (var-get next-guild-id))
+     (current-time (unwrap-panic (get-stacks-block-info? time (- stacks-block-height u1)))))
+    (begin
+      (asserts! (> max-members u0) err-invalid-parameters)
+      (map-set gaming-guilds { guild-id: guild-id }
+        {
+          guild-name: guild-name,
+          guild-leader: tx-sender,
+          max-members: max-members,
+          current-members: u0,
+          guild-type: guild-type,
+          entry-requirements: entry-requirements,
+          created-date: current-time,
+          guild-treasury: u0,
+          reputation-score: u100,
+          is-recruiting: true
+        })
+      (var-set next-guild-id (+ guild-id u1))
+      (ok guild-id))))
+
+(define-public (toggle-guild-recruiting (guild-id uint))
+  (let ((guild-info (unwrap! (map-get? gaming-guilds { guild-id: guild-id }) err-guild-not-found)))
+    (begin
+      (asserts! (is-eq tx-sender (get guild-leader guild-info)) err-not-guild-leader)
+      (map-set gaming-guilds { guild-id: guild-id }
+        (merge guild-info { is-recruiting: (not (get is-recruiting guild-info)) }))
+      (ok true))))
+
+(define-public (transfer-guild-leadership (guild-id uint) (new-leader principal))
+  (let ((guild-info (unwrap! (map-get? gaming-guilds { guild-id: guild-id }) err-guild-not-found)))
+    (begin
+      (asserts! (is-eq tx-sender (get guild-leader guild-info)) err-not-guild-leader)
+      (asserts! (is-some (map-get? member-access { member: new-leader, guild-id: guild-id })) err-not-member)
+      (map-set gaming-guilds { guild-id: guild-id }
+        (merge guild-info { guild-leader: new-leader }))
+      (ok true))))
